@@ -34,9 +34,9 @@ dbGetQuery(geo_con, "SELECT gse.title, gse.gse, gpl.gpl, gpl.manufacturer, gpl.d
 # Converting all db tables to data.table tables
 ```{r}
 library(data.table)    
-gse.dt <-data.table('GEOmetadb.sqlite','gse')
-gse_gpl.dt <-data.table('GEOmetadb.sqlite','gse_gpl')
-gse <-data.table()
+gse.dt <-data.table(dbGetQuery(geo_con,"SELECT * FROM gse"))
+gse_gpl.dt <-data.table(dbGetQuery(geo_con,"SELECT * FROM gse_gpl"))
+gpl.dt <-data.table(dbGetQuery(geo_con,"SELECT * FROM gpl"))
 
 setkey(gse.dt,gse)
 setkey(gse_gpl.dt,gse)
@@ -53,3 +53,10 @@ merge2[title.x %like% "HCV" & contact.x %like% "Yale"& manufacturer %like% "Illu
 ```
 
 # Results
+        gse      gpl  manufacturer
+    1: GSE40223 GPL10558 Illumina Inc.
+    2: GSE40224 GPL10558 Illumina Inc.
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   description
+    1: The HumanHT-12 v4 Expression BeadChip provides high throughput processing of 12 samples per BeadChip without the need for expensive, specialized automation. The BeadChip is designed to support flexible usage across a wide-spectrum of experiments.;\t;\tThe updated content on the HumanHT-12 v4 Expression BeadChips provides more biologically meaningful results through genome-wide transcriptional coverage of well-characterized genes, gene candidates, and splice variants.;\t;\tEach array on the HumanHT-12 v4 Expression BeadChip targets more than 31,000 annotated genes with more than 47,000 probes derived from the National Center for Biotechnology Information Reference Sequence (NCBI) RefSeq Release 38 (November 7, 2009) and other sources.;\t;\tPlease use the GEO Data Submission Report Plug-in v1.0 for Gene Expression which may be downloaded from https://icom.illumina.com/icom/software.ilmn?id=234 to format the normalized and raw data.  These should be submitted as part of a GEOarchive.  Instructions for assembling a GEOarchive may be found at http://www.ncbi.nlm.nih.gov/projects/geo/info/spreadsheet.html;\t;\tOctober 11, 2012: annotation table updated with HumanHT-12_V4_0_R2_15002873_B.txt
+    2: The HumanHT-12 v4 Expression BeadChip provides high throughput processing of 12 samples per BeadChip without the need for expensive, specialized automation. The BeadChip is designed to support flexible usage across a wide-spectrum of experiments.;\t;\tThe updated content on the HumanHT-12 v4 Expression BeadChips provides more biologically meaningful results through genome-wide transcriptional coverage of well-characterized genes, gene candidates, and splice variants.;\t;\tEach array on the HumanHT-12 v4 Expression BeadChip targets more than 31,000 annotated genes with more than 47,000 probes derived from the National Center for Biotechnology Information Reference Sequence (NCBI) RefSeq Release 38 (November 7, 2009) and other sources.;\t;\tPlease use the GEO Data Submission Report Plug-in v1.0 for Gene Expression which may be downloaded from https://icom.illumina.com/icom/software.ilmn?id=234 to format the normalized and raw data.  These should be submitted as part of a GEOarchive.  Instructions for assembling a GEOarchive may be found at http://www.ncbi.nlm.nih.gov/projects/geo/info/spreadsheet.html;\t;\tOctober 11, 2012: annotation table updated with HumanHT-12_V4_0_R2_15002873_B.txt
+    
