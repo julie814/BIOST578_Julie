@@ -1,0 +1,76 @@
+lHomework 2 - Ju Young Park
+========================================================
+
+### Reproduce the results presented in Figure 2 of the following paper: 
+# Qian, F., Bolen, C. R., Jing, C., Wang, X., Zheng, W., Zhao, H., et al. (2013). Impaired toll-like receptor 3-mediated immune responses from macrophages of patients chronically infected with hepatitis C virus. Clinical and Vaccine Immunology : CVI, 20(2), 146–155. doi:10.1128/CVI.00530-12
+
+# Getting the data from GEO
+```{r, eval=FALSE}
+source("http://bioconductor.org/biocLite.R")
+
+library(GEOquery)
+library(Biobase)
+library(data.table)
+library(limma)
+```
+
+```{r}
+gds <- getGEO("GSE40812", destdir="/Users/Julie/Documents/R/BIOST578/DB")
+
+#Extract data file mannually
+gds <- getGEO(filename = "/Users/Julie/Documents/R/BIOST578/DB/GSE40812_series_matrix.txt")
+```
+
+# sanitize data
+```{r}
+gds <- gds[[1]]
+pd <- pData(gds)
+mm_pd <- pd[pd$source_name_ch1=="Monocyte-derived Macrophage",]
+mm_eset<-gds[,rownames(mm_pd)]
+#characteristic_ch1 indicates VL++ or VL--
+#characteristic_ch1.2 indicates Mock or Poly IC
+mm_pd$HCV <- gsub(".*: ", "", mm_pd$characteristics_ch1)
+mm_pd$HCV <- ifelse(mm_pd$HCV=="Neg", "-", "+")
+mm_pd$treatment <- gsub(".*: ", "", mm_pd$characteristics_ch1.2)
+
+pData(gds) <- sanitize_pdata(pData(gds))
+```
+
+# NOrmalizing the data
+```{r}
+library(lumi)
+
+gds <- lumiN(gds)
+#Note: Expression matrix has been quantile normalized using the lumi package for practice. Normalization step in this data will not change the data. 
+```
+
+# Using LIMMA to test for differential expression
+```{r, message=FALSE}
+# load the limma package
+library(limma)
+```
+
+```{r}
+# test for differential expression using limma
+treat_matrix <- model. matrix(~treatment+0, mm_pd)
+colnames(treat_matrix)
+colnames(treat_matrix) <- c("Mock", "Poly")
+fit1 <- lmFit(mm_eset, treat_matrix)
+ebay1 <- eBayes(fit2)
+
+# Top table of results, adjusted for false discovery rate (5%)
+TopTable1 <- topTable(ebay1, coef="Poly", number=Inf, p.value=0.05, adjust="BH")
+sum(TopTable1$adj.P.Val < 0.1)
+
+selected <- p.adjust(ebay_mm$p.value[, 3]) <0.1
+gds_selected <-gds[[1]][selected,]
+```
+
+
+# Results using a heatmap (Use the pheatmap package)
+```{r}
+library(pheatmap)
+
+pData(plot)
+heatmap(exprs(gds_Selected))
+```
