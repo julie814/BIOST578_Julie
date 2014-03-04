@@ -1,4 +1,4 @@
-lHomework 2 - Ju Young Park
+Homework 2 - Ju Young Park
 ========================================================
 
 ### Reproduce the results presented in Figure 2 of the following paper: 
@@ -23,8 +23,18 @@ gds <- getGEO(filename = "/Users/Julie/Documents/R/BIOST578/DB/GSE40812_series_m
 
 # sanitize data
 ```{r}
-gds <- gds[[1]]
 pd <- pData(gds)
+
+sanitize_pdata <- function(pd){
+  keepCols <- c(
+    "characteristics_ch1", "characteristics_ch1.2")
+  pd <- pd[, keepCols]
+  colnames(pd) <- c("ptkinds", "treatment")
+  pd$ptkinds <- gsub(".*: ", "", pd$ptkinds)
+  pd$treatment<-gsub("treatment: ", "", pd$treatment)
+  pd
+}
+
 mm_pd <- pd[pd$source_name_ch1=="Monocyte-derived Macrophage",]
 mm_eset<-gds[,rownames(mm_pd)]
 #characteristic_ch1 indicates VL++ or VL--
@@ -52,20 +62,19 @@ library(limma)
 
 ```{r}
 # test for differential expression using limma
-treat_matrix <- model. matrix(~treatment+0, mm_pd)
+treat_matrix <- model.matrix(~treatment+0, mm_pd)
 colnames(treat_matrix)
 colnames(treat_matrix) <- c("Mock", "Poly")
 fit1 <- lmFit(mm_eset, treat_matrix)
-ebay1 <- eBayes(fit2)
+ebay1 <- eBayes(fit1)
 
 # Top table of results, adjusted for false discovery rate (5%)
 TopTable1 <- topTable(ebay1, coef="Poly", number=Inf, p.value=0.05, adjust="BH")
 sum(TopTable1$adj.P.Val < 0.1)
 
-selected <- p.adjust(ebay_mm$p.value[, 3]) <0.1
+selected <- p.adjust(ebay1$p.value[, 3]) <0.1
 gds_selected <-gds[[1]][selected,]
 ```
-
 
 # Results using a heatmap (Use the pheatmap package)
 ```{r}
