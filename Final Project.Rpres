@@ -1,0 +1,98 @@
+Cell type-specific gene expression differences in complex tissues
+========================================================
+author: Jia Jin, Julie Park
+date: 03/11/2014
+
+Outline
+========================================================
+- Paper objectives
+- Background
+- Methods
+- Results
+- Conclusion
+
+Paper Objectives
+========================================================
+- To validate cell type-specific significance analysis of microarrays (csSAM) method using statistical deconvolution of rat liver, brain, and lung
+
+- To apply above method to whole-blood gene expression datasets obtained from patients experiencing stable post kidney transplant and acute transplant rejection
+
+Background - csSAM
+========================================================
+- cell type-sepcific significance analysis of microarrays (csSAM)
+- 
+
+--------------------------------------------------------
+![csSAM Overview](http://www.nature.com/nmeth/journal/v7/n4/images/nmeth.1439-F1.jpg)
+<small>Source: Shen-Orr SS et al. Nat Methods. (2010)</small>
+
+Background - Blood
+========================================================
+- Whole blood: blood which no constituent (e.g. plasma, platelets) removed 
+- White blood: composed of monocytes, lymphocytes, eosinophils, basophils, and neutrophils
+![Blood](http://www.highlands.edu/academics/divisions/scipe/biology/faculty/harnden/2121/images/blood.jpg)
+<small>Source: Pearson Education, Inc. (2011)</small>
+
+
+Methods - Microarray analysis of rat brain, liver, and lung
+========================================================
+- cRNA derived from control rat brain, liver, and lung mixed in 13 different proportions including pure isolation of brain, liver, and lung cRNAs. 
+- Frozen samples were hypridized to rat specific RAE230_2 whole-genome expresssion arrays (Affymetrix)
+- Normalized using robust multi-array average (RMA)
+
+
+Methods - Statistical deconvolution of cel type-specific expression profiles
+========================================================
+
+
+
+Methods - False discovery analysis in the rat experiment
+========================================================
+- T<sub>j</sub> = T-statistic for the true difference between expression of gene j in brain and liver
+- h<sub>j</sub><sup>1</sup>, h<sub>j</sub><sup>2</sup> = estimated expression for brain and liver from deconvolution
+ - T<sub>j</sub> > 2, h<sub>j</sub><sup>1</sup> - h<sub>j</sub><sup>2</sup> > c: gene j expresssed higher in brain
+ - T<sub>j</sub> < -2, h<sub>j</sub><sup>1</sup> - h<sub>j</sub><sup>2</sup> < -c: gene j expresssed higher in liver
+- Calculated the receiver operating characteristic (ROC) curves and compare EDIT MORE
+- 
+
+
+Methods - csSAM tests for two-class differences
+========================================================
+
+
+Methods - Estimation of FDR for csSAM cell-specific tests
+========================================================
+
+
+Result - Plot 1
+========================================================
+
+
+Supplmentary (discrepency between deconvoluted and measured data)
+========================================================
+
+
+Summary
+========================================================
+
+
+Human renal transplant dataset
+========================================================
+- Whole-blood from 24 pediatric renal transplant recipients:
+ - <small>15 from individuals showing acute rejection of the transplant</small>
+ - <small>9 from individuals with stable post-transplant</small>
+- Gene expression of whole-blood measured on human-specific HGU133V2.0 (+) whole-genome expression arrays (Affymetrix)
+- White blood analyzed to find the percentages of monocytes, lymphocytes, eosinophils, basophils, and neutrophils using Coulter counter
+- Normalization by RMA
+
+
+Result Cont.
+========================================================
+
+
+Conclusion
+========================================================
+
+
+Questions?
+========================================================
