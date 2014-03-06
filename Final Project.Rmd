@@ -1,0 +1,303 @@
+Final Project 
+========================================================
+
+# Getting the data from GEO
+```{r, eval=FALSE}
+source("http://bioconductor.org/biocLite.R")
+
+library(GEOquery)
+library(Biobase)
+library(csSAM)
+```
+
+```{r, eval=FALSE}
+gds <- getGEO("GSE20300", destdir="/Users/Julie/Documents/R/BIOST578/DB")
+
+# Extract data file mannually
+gds <- getGEO(filename = "/Users/Julie/Documents/R/BIOST578/DB/GSE20300_series_matrix.txt")
+
+# OR download data from supplement data and extract it mannually 
+load("/Users/Julie/Documents/R/BIOST578/DB/nmeth.1439-S2/kidneyTransplant.RData")
+```
+
+# Deconvolution
+```{r}
+deconv=function(G,cc,y,s0=NULL,s0.r=NULL,s0.sam=NULL,ccbar=NULL,stand.r=T,nonNeg=T){
+
+# deconvolution of cell type gene expression from celltype proportions
+#  input G= n  by p matrix of gene expression, n samples and    p genes
+#        cc=n by k matrix of cell-type proportions, 
+#        y=n-vector of class labels    (must be 1s and 2s)          
+#        s0.perc= percentile of sd values used to estimate 
+#                     exchangeability factors s0 and s0.sam 
+#                 s0 is for analysis of adjusted data, s0.sam for raw data
+#        s0= optional fixed value of s0
+#        s0.sam= optional fixed value of s0.sam
+#        ccbar- optional vector of cell-type weights for creating adjusted data     
+#             should ne ge0 and add to 1
+#             default is average profile from data
+#  stand.r  - should cell-type contrasts be standardized?
+# output   ghat1,ghat2- k by estimates of cell-type  expression for groups 1 and 2
+#          Ghat= n by p matrix of adjusted data
+#          res= n by p matrix of residuals =G-Ghat            
+#          rhat= (ghat2-ghat1)/sd, estimates of contrasts                                
+#          s0- input or computed value of s0
+#          tt- modified  2-sample t-statistics (SAM scores)  from adjusted data      
+#           tt.sam= 2-sample t-statistics (SAM scores) from raw (unadjusted ) data
+#          s0.sam- input or computed value of SAM exchangeability factor
+#           ccbar=  value    of ccbar used
+
+k=ncol(cc)
+fit1=lsfit(cc[y==1,],G[y==1,],int=F)
+fit2=lsfit(cc[y==2,],G[y==2,],int=F)
+n1=sum(y==1)
+n2=sum(y==2)
+
+
+sd1=ls.diag(fit1)$std.dev
+sd2=ls.diag(fit2)$std.dev
+if(stand.r){
+se1=ls.diag(fit1)$std.err
+se2=ls.diag(fit2)$std.err
+se=((n1*se1^2+n2*se2^2)/(n1+n2))^(1/2)
+}
+
+ghat1=fit1$coef
+ghat2=fit2$coef
+
+
+if(nonNeg){
+ghat1[ghat1 < 0] = 0
+ghat2[ghat2 < 0] = 0
+}
+
+if(is.null(ccbar)){ccbar=colMeans(cc)}
+Ghat1=matrix(t(ccbar)%*%ghat1,ncol=ncol(G),nrow=sum(y==1),byrow=T)+fit1$res*sqrt((n1-1)/(n1-k))
+Ghat2=matrix(t(ccbar)%*%ghat2,ncol=ncol(G),nrow=sum(y==2),byrow=T)+fit2$res*sqrt((n2-1)/(n2-k))
+Ghat=G
+Ghat[y==1,]=Ghat1
+Ghat[y==2,]=Ghat2
+
+# t-test on adjusted data
+# first: median center the arrays
+Ghatc=scale(t(Ghat),center=apply(Ghat,1,median),scale=F)
+sd.t=ttest.func(Ghatc,y)$sd
+if(is.null(s0)){
+s0=quantile(sd.t,.5)
+}
+
+s0.r=apply(se,1,quantile, .5)
+
+
+junk=ttest.func(Ghatc,y,s0)
+
+tt=junk$tt
+num.tt=junk$num
+
+res=G
+res[y==1,]=fit1$res
+res[y==2,]=fit2$res
+
+rhat=ghat2-ghat1
+
+if(stand.r){
+for(kk in 1:k){
+rhat[kk,]=rhat[kk,]/(se[kk,]+s0.r[kk])
+}
+}
+# center the rhat's for each cell type
+for(kk in 1:k){
+rhat[kk,]=rhat[kk,]-median(rhat[kk,])
+}
+
+# SAM on raw data
+# first: median center the arrays
+Gc=scale(t(G),center=apply(G,1,median),scale=F)
+if(is.null(s0.sam)){s0.sam=quantile(ttest.func(Gc,y)$sd,.5)}
+tt.sam=ttest.func(Gc,y,s0=s0.sam)$tt
+
+return(list(ghat1=ghat1,ghat2=ghat2,tt=tt,num.tt=num.tt,tt.sam=tt.sam,s0=s0,s0.r=s0.r,s0.sam=s0.sam,stand.r=stand.r,
+Ghat=Ghat,res=res,rhat=rhat,sd.t=sd.t,se=se,ccbar=ccbar))
+}
+```
+
+# FDR deconvolution
+```{r}
+fdr.deconv=function(fit,G,cc,y,nperms=20, return.perms=FALSE,nonNeg=T){
+# estimate FDR for  deconvolution estimator
+
+# fit= output from deconv
+# G,cc,y- data used for deconv that produced "fit"
+#  nperms= number of permutations  
+#  return.perms- should the raw permutations be returned?
+
+
+# output fdr,fdr.sam- estimated FDRs of deconv estimated and raw SAM scores
+#  at cutpoints cutp and cutp.sam
+#  ncall, ncall.sam= number  of genes called signficant at  cutp, cutp.sam
+#     fdr.g, ncall.g, cutp.g- k by p matrices-  FDR, number of genes called, cutpoint for each of the k celltypes  
+# fdr.g.pos, fdr.g.neg, ncall.g.pos, ncall.g.neg - 
+#     same thing for postive (up-regulated) and # negative (down-regulated)
+
+tt=fit$tt
+tt.sam=fit$tt.sam
+rhat=fit$rhat
+ccbar=fit$ccbar
+k=length(ccbar)
+stand.r=fit$stand.r
+s0=fit$s0
+s0.r=fit$s0.r
+s0.sam=fit$s0.sam
+
+rstar=array(NA,c(k,length(tt),nperms))
+ttstar=ttstar.sam=NULL
+
+for(i in 1:nperms){
+cat(c("perm=",i," out of ",nperms),fill=T)
+o=sample(1:length(y))
+ystar=y[o]
+junk=deconv(G,cc,ystar,s0,ccbar=ccbar,stand.r=stand.r,nonNeg)
+ttstar=c(ttstar, junk$tt) # tstat from modified data
+#ttstar.sam=c(ttstar.sam,ttest.func(t(G),ystar,s0.sam)$tt) # usual t-stat
+ttstar.sam=c(ttstar.sam,junk$tt.sam) # usual t-stat
+rstar[,,i]=junk$rhat      # individual cell types
+}
+
+cutp=seq(0,max(abs(tt)),length=50)
+cutp.sam=seq(0,max(abs(tt.sam)),length=50)
+cutp.g=matrix(NA,nrow=k,ncol=50)
+  for(kk in 1:k){cutp.g[kk,]=seq(0,max(abs(rhat[kk,])),length=50)}
+
+
+
+fdr=fdr.sam=fdr.pos=fdr.neg=fdr.sam.pos=fdr.sam.neg=ncall=ncall.sam=ncall.pos=ncall.neg=ncall.sam.pos=ncall.sam.neg=rep(NA,50)
+fdr.g=ncall.g=fdr.g.pos=fdr.g.neg=ncall.g.pos=ncall.g.neg=matrix(NA,nrow=k,ncol=50)
+for(i in 1:50){
+
+fdr[i]=(sum(abs(ttstar)>cutp[i])/nperms)/sum(abs(tt)>cutp[i]) 
+ncall[i]=sum(abs(tt)>cutp[i])
+fdr.pos[i]=(sum(ttstar>cutp[i])/nperms)/sum((tt)>cutp[i]) 
+ncall.pos[i]=sum(tt>cutp[i])
+fdr.neg[i]=(sum(ttstar< -cutp[i])/nperms)/sum(tt< -cutp[i])      
+ncall.neg[i]=sum(tt < -cutp[i])
+
+fdr.sam[i]=(sum(abs(ttstar.sam)>cutp.sam[i])/nperms)/sum(abs(tt.sam)>cutp.sam[i])
+ncall.sam[i]=sum(abs(tt.sam)>cutp.sam[i])
+fdr.sam.pos[i]=(sum(ttstar.sam>cutp.sam[i])/nperms)/sum(tt.sam>cutp.sam[i])        
+ncall.sam.pos[i]=sum(tt.sam>cutp.sam[i])
+fdr.sam.neg[i]=(sum(ttstar.sam< -cutp.sam[i])/nperms)/sum(tt.sam< -cutp.sam[i])   
+ncall.sam.neg[i]=sum(tt.sam < -cutp.sam[i])
+
+ for(kk in 1:k){
+ fdr.g[kk,i]=(sum(abs(rstar[kk,,])>cutp.g[kk,i])/nperms)/sum(abs(rhat[kk,])>cutp.g[kk,i])
+ ncall.g[kk,i]=sum(abs(rhat[kk,])>cutp.g[kk,i])
+ fdr.g.pos[kk,i]=(sum(rstar[kk,,]>cutp.g[kk,i])/nperms)/sum(rhat[kk,]>cutp.g[kk,i])
+ fdr.g.neg[kk,i]=(sum(rstar[kk,,]< -cutp.g[kk,i])/nperms)/sum(rhat[kk,]< -cutp.g[kk,i])
+ ncall.g.pos[kk,i]=sum(rhat[kk,]>cutp.g[kk,i])
+ ncall.g.neg[kk,i]=sum(rhat[kk,]< -cutp.g[kk,i])
+
+}
+}
+
+if(!return.perms){ttstar=ttstar.sam=rstar=NULL}
+fdr=pmin(fdr,1)
+fdr.pos=pmin(fdr.pos,1)
+fdr.neg=pmin(fdr.neg,1)
+fdr.sam=pmin(fdr.sam,1)
+fdr.sam.pos=pmin(fdr.sam.pos,1)
+fdr.sam.neg=pmin(fdr.sam.neg,1)
+fdr.g=pmin(fdr.g,1)
+fdr.g.pos=pmin(fdr.g.pos,1)
+fdr.g.neg=pmin(fdr.g.neg,1)
+
+for(i in 1:k){
+ fdr=make.monotone(fdr)
+ fdr.pos=make.monotone(fdr.pos)
+ fdr.neg=make.monotone(fdr.neg)
+ fdr.sam=make.monotone(fdr.sam)
+ fdr.sam.pos=make.monotone(fdr.sam.pos)
+ fdr.sam.neg=make.monotone(fdr.sam.neg)
+ fdr.g[i,]=make.monotone(fdr.g[i,])
+ fdr.g.pos[i,]=make.monotone(fdr.g.pos[i,])
+ fdr.g.neg[i,]=make.monotone(fdr.g.neg[i,])
+}
+
+return(list(fdr=fdr,ncall=ncall,ncall.pos=ncall.pos,ncall.neg=ncall.neg,fdr.pos=fdr.pos,fdr.neg=fdr.neg,fdr.sam=fdr.sam,fdr.sam.pos=fdr.sam.pos,fdr.sam.neg=fdr.sam.neg,ncall.sam=ncall.sam,ncall.sam.pos=ncall.sam.pos,ncall.sam.neg=ncall.sam.neg,
+cutp=cutp,cutp.sam=cutp.sam, fdr.g=fdr.g, cutp.g=cutp.g,ncall.g=ncall.g,
+ fdr.g.pos= fdr.g.pos, fdr.g.neg=fdr.g.neg,ncall.g.pos=ncall.g.pos, ncall.g.neg= ncall.g.neg,
+ttstar=ttstar,ttstar.sam=ttstar.sam, rstar=rstar))
+}
+
+fit.null=
+function(G,cc,y){
+junk=lsfit(cc,G,int=F)
+ghat=junk$coef
+return(list(ghat=ghat,res=junk$res))
+}
+
+gen.null=
+function(cc,nullfit){
+ghat=nullfit$ghat
+res=nullfit$res
+p=ncol(ghat)
+n=nrow(cc)
+k=ncol(cc)
+ 
+G2=matrix(0,nrow=n,ncol=p)
+
+ for(j in 1:p){
+  for(kk in 1:k){
+    for(i in 1:n){
+   G2[i,j]=G2[i,j]+cc[i,kk]*ghat[kk,j]
+
+
+ }}}
+res.star=matrix(sample(res,size=n*p),nrow=n,ncol=p)
+G2=G2+res.star
+return(G2)
+}
+
+make.monotone=
+function(x){
+n=length(x)
+for(j in 2:n){ x[j]=min(x[j-1],x[j])}
+return(x)
+}
+```
+
+# Deconvolution analysis - whole (SAM)
+```{r}
+set.seed(33)
+
+# run analysis
+deconvGE=deconv(geneExp,cellFreq,patientGroups) #deconvolve cell specific expression profiles for each of the two cell specific expression profiles.
+deconvGE.fdr =fdr.deconv(deconvGE,geneExp,cellFreq,patientGroups,nperms=200)  #For each cell, calculate the false discovery rate for the difference in a gene's expression in a cell between groups
+
+# plot whole tissue (SAM), cell-frequency adjusted and cell-type specific FDRs for both two-tailed and one-tailed analysis.
+
+pdf(file="test.pdf",height=12,width=8)
+par(mfrow=c(3,3))
+plot(deconvGE.fdr$ncall.sam, deconvGE.fdr$fdr.sam, xlab="# called", ylab="FDR", type="l",log="x",ylim=c(0,1))
+title("SAM")
+plot(deconvGE.fdr$ncall.sam,deconvGE.fdr$fdr.sam.pos,xlab="# called",ylab="FDR", type="l",log="x",ylim=c(0,1))
+title("SAM- up")
+plot(deconvGE.fdr$ncall.sam.neg,deconvGE.fdr$fdr.sam.neg,xlab="# called",ylab="FDR", type="l",log="x",ylim=c(0,1))
+title("SAM- down")
+plot(deconvGE.fdr$ncall,deconvGE.fdr$fdr,xlab="# called",ylab="FDR",type="l",log="x",ylim=c(0,1))
+title("ttest on adjusted")
+plot(deconvGE.fdr$ncall.pos,deconvGE.fdr$fdr.pos,xlab="# called",ylab="FDR",type="l",log="x",ylim=c(0,1))
+title("ttest on adjusted-up")
+plot(deconvGE.fdr$ncall.neg,deconvGE.fdr$fdr.neg,xlab="# called",ylab="FDR",type="l",log="x",ylim=c(0,1))
+title("ttest on adjusted-down")
+par(mfrow=c(5,3))
+par(mar=c(2,2,3,1))
+for(i in 1:5){
+ plot(deconvGE.fdr$ncall.g[i,],deconvGE.fdr$fdr.g[i,],xlab="# called",ylab="FDR", type="l",log="x",ylim=c(0,1))
+title(paste(cellNames[i],"overall"))
+ plot(deconvGE.fdr$ncall.g.pos[i,],deconvGE.fdr$fdr.g.pos[i,],xlab="# called",ylab="FDR", type="l",log="x",ylim=c(0,1))
+title(paste(cellNames[i],"up"))
+ plot(deconvGE.fdr$ncall.g.neg[i,],deconvGE.fdr$fdr.g.neg[i,],xlab="# called",ylab="FDR", type="l",log="x",ylim=c(0,1))
+title(paste(cellNames[i],"down"))
+}
+dev.off()
+```
