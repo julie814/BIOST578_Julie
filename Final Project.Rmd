@@ -1,7 +1,7 @@
 Final Project 
 ========================================================
 
-# Getting the data from GEO
+### Getting the data from GEO
 ```{r, eval=FALSE}
 source("http://bioconductor.org/biocLite.R")
 
@@ -20,7 +20,7 @@ gds <- getGEO(filename = "/Users/Julie/Documents/R/BIOST578/DB/GSE20300_series_m
 load("/Users/Julie/Documents/R/BIOST578/DB/nmeth.1439-S2/kidneyTransplant.RData")
 ```
 
-# Deconvolution
+### Deconvolution
 ```{r}
 deconv=function(G,cc,y,s0=NULL,s0.r=NULL,s0.sam=NULL,ccbar=NULL,stand.r=T,nonNeg=T){
 
@@ -121,7 +121,7 @@ Ghat=Ghat,res=res,rhat=rhat,sd.t=sd.t,se=se,ccbar=ccbar))
 }
 ```
 
-# FDR deconvolution
+### FDR deconvolution
 ```{r}
 fdr.deconv=function(fit,G,cc,y,nperms=20, return.perms=FALSE,nonNeg=T){
 # estimate FDR for  deconvolution estimator
@@ -265,7 +265,7 @@ return(x)
 }
 ```
 
-# Deconvolution analysis - whole (SAM)
+### Deconvolution analysis - whole (SAM)
 ```{r}
 set.seed(33)
 
