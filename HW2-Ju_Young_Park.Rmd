@@ -5,8 +5,9 @@ Homework 2 - Ju Young Park
 # Qian, F., Bolen, C. R., Jing, C., Wang, X., Zheng, W., Zhao, H., et al. (2013). Impaired toll-like receptor 3-mediated immune responses from macrophages of patients chronically infected with hepatitis C virus. Clinical and Vaccine Immunology : CVI, 20(2), 146–155. doi:10.1128/CVI.00530-12
 
 # Getting the data from GEO
-```{r, eval=FALSE}
-source("http://bioconductor.org/biocLite.R")
+```{r, eval=TRUE}
+# You need to evaluate this otherwise the packages would not be loaded
+# source("http://bioconductor.org/biocLite.R")
 
 library(GEOquery)
 library(Biobase)
@@ -15,25 +16,13 @@ library(limma)
 ```
 
 ```{r}
-gds <- getGEO("GSE40812", destdir="/Users/Julie/Documents/R/BIOST578/DB")
-
-#Extract data file mannually
-gds <- getGEO(filename = "/Users/Julie/Documents/R/BIOST578/DB/GSE40812_series_matrix.txt")
+# You need to use a relative path (make sure the directory exists on your machine)
+gds <- getGEO("GSE40812", destdir="./Data/")[[1]]
 ```
 
 # sanitize data
 ```{r}
 pd <- pData(gds)
-
-sanitize_pdata <- function(pd){
-  keepCols <- c(
-    "characteristics_ch1", "characteristics_ch1.2")
-  pd <- pd[, keepCols]
-  colnames(pd) <- c("ptkinds", "treatment")
-  pd$ptkinds <- gsub(".*: ", "", pd$ptkinds)
-  pd$treatment<-gsub("treatment: ", "", pd$treatment)
-  pd
-}
 
 mm_pd <- pd[pd$source_name_ch1=="Monocyte-derived Macrophage",]
 mm_eset<-gds[,rownames(mm_pd)]
@@ -42,15 +31,14 @@ mm_eset<-gds[,rownames(mm_pd)]
 mm_pd$HCV <- gsub(".*: ", "", mm_pd$characteristics_ch1)
 mm_pd$HCV <- ifelse(mm_pd$HCV=="Neg", "-", "+")
 mm_pd$treatment <- gsub(".*: ", "", mm_pd$characteristics_ch1.2)
-
-pData(gds) <- sanitize_pdata(pData(gds))
+pData(mm_eset) <- mm_pd
 ```
 
-# NOrmalizing the data
-```{r}
+# Normalizing the data
+```{r, eval=FALSE}
 library(lumi)
 
-gds <- lumiN(gds)
+mm_eset <- lumiN(mm_eset)
 #Note: Expression matrix has been quantile normalized using the lumi package for practice. Normalization step in this data will not change the data. 
 ```
 
@@ -62,24 +50,35 @@ library(limma)
 
 ```{r}
 # test for differential expression using limma
-treat_matrix <- model.matrix(~treatment+0, mm_pd)
+treat_matrix <- model.matrix(~treatment, mm_eset)
 colnames(treat_matrix)
 colnames(treat_matrix) <- c("Mock", "Poly")
 fit1 <- lmFit(mm_eset, treat_matrix)
 ebay1 <- eBayes(fit1)
 
 # Top table of results, adjusted for false discovery rate (5%)
-TopTable1 <- topTable(ebay1, coef="Poly", number=Inf, p.value=0.05, adjust="BH")
-sum(TopTable1$adj.P.Val < 0.1)
+TopTable1 <- topTable(ebay1, coef="Poly", p.value=0.05, lfc=log2(1.5),number=Inf)
 
-selected <- p.adjust(ebay1$p.value[, 3]) <0.1
-gds_selected <-gds[[1]][selected,]
+selected <- TopTable1$ID
+length(selected)
 ```
+
+```{r}
+eset_small <- mm_eset[selected,]
+HCV_matrix <- model.matrix(~HCV, eset_small)
+colnames(HCV_matrix)
+colnames(HCV_matrix) <- c("Neg", "Pos")
+fit7 <- lmFit(eset_small, HCV_matrix)
+fit7_ebay <- eBayes(fit7)
+TopTable7 <- topTable(fit7_ebay, coef="Pos", adjust="none", number=Inf, p.value=0.1)
+selected <- TopTable7$ID
+length(selected)
+```
+
 
 # Results using a heatmap (Use the pheatmap package)
 ```{r}
 library(pheatmap)
-
-pData(plot)
-heatmap(exprs(gds_Selected))
+mat <- exprs(eset_small[as.character(selected),])
+pheatmap(mat, scale="row")
 ```
