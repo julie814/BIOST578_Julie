@@ -1,0 +1,117 @@
+lHomework 3 - Ju Young Park
+========================================================
+
+### You will have to analyze the RNA-seq data presented in:
+# Henn, A. D. et al. High-resolution temporal response patterns to influenza vaccine reveal a distinct human plasma cell gene signature. Scientific Reports 3, 2327 (2013).
+  
+# Getting the data from GEO
+```{r, eval=TRUE}
+source("http://bioconductor.org/biocLite.R")
+
+library(GEOquery)
+library(Biobase)
+library(data.table)
+library(limma)
+library(GSEABase)
+library(pheatmap)
+
+gd <- getGEO("GSE45735", destdir="./Data")
+getGEOSuppFiles("GSE45735", makeDirectory=FALSE, baseDir="./Data")
+# T14 file mannually fixed because it was problematic
+
+pd <- pData(gd[[1]])
+```
+
+# Differentially expressed genes at each time point compared to baseline (day 0) using voom and limma. FDR cutoff = 0.01. Results shown using pheatmap with the log fold-change of the differentially expressed genes grouped by time point.  
+```{r}
+# Grep file names
+files <- list.files(path="./Data", pattern="GSE45735_T.*.gz", full.names=TRUE)
+file_list <- lapply(files, read.table, header=TRUE)
+
+# Remove duplicated rows
+file_list_unique <- lapply(file_list, function(x) {x<-x[!duplicated(x$Gene),]; x<-x[order(x$Gene),]; rownames(x)<-x$Gene; x[,-1]})
+
+# Take intersection of all genes
+gene_list <- Reduce(intersect, lapply(file_list_unique, rownames))
+file_list_unique <- lapply(file_list_unique, "[", gene_list,)
+matrix <- as.matrix(do.call(cbind, file_list_unique))
+
+# Clean up the pData
+pd_small <- pd[!grepl("T13_Day8",pd$title),]
+pd_small$Day <- sapply(strsplit(gsub(" \\[PBMC\\]", "", pd_small$title), "_"), "[", 2)
+pd_small$subject <- sapply(strsplit(gsub(" \\[PBMC\\]", "", pd_small$title), "_"), "[", 1)
+colnames(matrix) <- rownames(pd_small)
+
+# Use Voom and limma
+new_set <- ExpressionSet(assayData=matrix+1)
+pData(new_set) <- pd_small
+
+design <- model.matrix(~subject+Day, new_set)
+voom <- voom(new_set, design=design)
+
+Fit1 <- lmFit(voom, design)
+eBayes1 <- eBayes(Fit1)
+
+# Find differentially expressed genes (FDR = 0.01)
+day <- 1:10
+data_list <- vector("list", length(day))
+for (i in day) {
+  coef <- paste0("DayDay", i)
+  df <- topTable(eBayes1, coef=coef, number=Inf, sort.by="none")
+  data_list[[i]] <- as.data.table(df)
+  data_list[[i]]$gene <- rownames(df)
+  data_list[[i]]$significant <- ifelse(data_list[[i]]$adj.P.Val<0.01, "Yes", "No")
+  setkey(data_list[[i]], gene)
+  }
+
+data_list[[1]]$anytime <- ifelse(data_list[[1]]$significant=="Yes", "Yes", "No")
+for (i in day[-1]) {
+    data_list[[1]]$anytime <- ifelse(data_list[[1]]$significant=="No" & data_list[[i]]$significant=="Yes", "Yes", data_list[[1]]$anytime)
+}
+
+setnames(data_list[[1]],"logFC","Day 1")
+Data <- data_list[[1]][, c("AveExpr","t","P.Value","adj.P.Val","B","significant"):=NULL]
+for (i in 2:length(day)) {
+  setnames(data_list[[i]], "logFC", paste("Day",i))
+  data_list[[i]][, c("AveExpr","t","P.Value","adj.P.Val","B","significant"):=NULL]
+  Data <- merge(Data, data_list[[i]], all.x=TRUE)
+}
+Gene.Data <- data.frame(Data)
+rownames(Gene.Data) <- Data$gene
+colnames(Gene.Data) <- colnames(Data)
+
+Gene.Data <- Gene.Data[Gene.Data$anytime=="Yes",]
+Gene.Data$gene <- NULL
+Gene.Data$anytime <- NULL
+Data_hmap <- data.matrix(Gene.Data)
+
+#Visualize data
+pheatmap(Data_hmap, cluster_cols=FALSE, scale="row")
+```
+
+# Perform a GSEA analysis using camera and the MSigDB Reactome pathway gene signatures. Display your results using pheatmap, again group by timepoint. This is similar to what we've done in class.
+```{r, cache=TRUE}
+# Convert the gene sets to gene indices
+#Register for GSEA and downlaod 'c2.all.v4.0.symbols.gmt' file manually
+gsea_set <- getGmt("./Data/c2.all.v4.0.symbols.gmt")
+gene_ids <- geneIds(gsea_set)
+sets_indices <- symbols2indices(gene_ids, rownames(new_set))
+
+# Find enriched sets over time
+res <- vector("list", length=10)
+for (i in 1:10) {
+  contrast <- paste0("DayDay", i)
+  cont_matrix <- makeContrasts(contrast, levels=design)
+  res[[i]] <- camera(voom, sets_indices, design=design, contrast=cont_matrix, sort=FALSE)
+  }
+
+# Visualize data
+P.Value <- sapply(res, function(x){ifelse(x$Direction=="Up", -10*log10(x$PValue), 10*log10(x$PValue))})
+rownames(P.Value) <- rownames(res[[1]])
+P.Value_max <- rowMax(abs(P.Value))
+P.Value_small <- P.Value[P.Value_max>30, ]
+anno <- data.frame(Time=paste0("Day", 1:10))
+rownames(anno) <- colnames(P.Value_small) <- paste0("Day", 1:10)
+
+pheatmap(P.Value_small, cluster_cols=FALSE, scale="row")
+```
